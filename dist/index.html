@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://huggingface.co https://*.hf.co https://*.huggingface.co https://gibs.earthdata.nasa.gov https://webgis-static.up.edu.ph; img-src 'self' data: blob: https://noah.up.edu.ph https://webgis-static.up.edu.ph https://gibs.earthdata.nasa.gov; media-src 'self' https://webgis-static.up.edu.ph; object-src 'none'; base-uri 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore flood, landslide, and storm surge maps for the Philippines.">
+  <title>Philippines Hazard Map</title>
+  <link rel="stylesheet" href="/vendor/maplibre-gl.css">
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="/vendor/pmtiles.js"></script>
+  <script defer src="./online-sources.js"></script>
+  <script defer src="/vendor/shp.js"></script>
+  <script defer src="./weather.js"></script>
+  <script defer src="./map.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand-mark" aria-hidden="true">◈</div>
+    <div>
+      <p class="brand">PUBLIC MAP VIEWER</p>
+      <h1>Philippines Hazard Map</h1>
+    </div>
+    <span class="offline"><span></span> Online dashboard</span>
+  </header>
+  <main class="workspace">
+    <aside class="sidebar" aria-label="Map controls">
+      <div class="sidebar-scroll">
+        <section class="panel search-panel">
+          <h2>Find a location</h2>
+          <form id="search-form">
+            <label class="visually-hidden" for="search">Province, municipality or coordinates</label>
+            <div class="search-box">
+              <input id="search" type="search" placeholder="Place or latitude, longitude" autocomplete="off">
+              <button type="submit">Go</button>
+            </div>
+            <ul id="suggestions" class="suggestions" aria-label="Matching locations" hidden></ul>
+            <p id="search-status" class="hint" aria-live="polite">Example coordinates: 14.63, 121.10</p>
+          </form>
+        </section>
+        <section class="panel layers-panel">
+          <h2>Hazard layers</h2>
+          <div id="layer-controls"></div>
+          <details class="import">
+            <summary>Open a local shapefile ZIP</summary>
+            <label class="visually-hidden" for="upload">Choose a zipped shapefile</label>
+            <input id="upload" type="file" accept=".zip,application/zip">
+            <p id="import-status" class="hint" aria-live="polite">Choose one province ZIP. Keep its geometry, attributes and projection files together.</p>
+            <button id="remove-import" class="text-button" type="button" hidden>Remove imported layer</button>
+          </details>
+        </section>
+        <section class="panel weather-panel">
+          <h2>Weather</h2>
+          <div class="layer-group">
+            <label for="weather-layer">Weather layer</label>
+            <div class="select-wrap">
+              <select id="weather-layer" disabled>
+                <option value="">Off</option>
+                <optgroup label="Observed weather">
+                  <option value="cloud-history">Satellite clouds · hourly history</option>
+                  <option value="satellite-clouds">Satellite clouds · NOAH loop</option>
+                  <option value="recent-rainfall">Recent rainfall · 1 hour</option>
+                </optgroup>
+                <optgroup label="Forecasts">
+                  <option value="max-temperature">Maximum temperature</option>
+                  <option value="heat-index">Heat index</option>
+                  <option value="rainfall">Rainfall forecast · Day 1</option>
+                </optgroup>
+              </select>
+            </div>
+            <img id="weather-legend" alt="" hidden>
+            <button id="cloud-playback" class="text-button" type="button" hidden>Pause cloud loop</button>
+            <p id="weather-layer-time" class="hint" hidden></p>
+            <label id="airport-toggle" hidden><input id="airport-temperatures" type="checkbox" disabled> Airport weather observations</label>
+            <p id="airport-time" class="hint" hidden></p>
+          </div>
+          <div class="weather-action">
+            <button id="refresh-weather" type="button" disabled>Refresh weather</button>
+          </div>
+          <p id="weather-status" class="hint" role="status">Checking saved weather…</p>
+          <p class="hint">Hourly Himawari imagery via <a href="https://worldview.earthdata.nasa.gov/?l=Himawari_AHI_Band13_Clean_Infrared" target="_blank" rel="noreferrer">NASA Earthdata</a>. The latest cloud loop and rainfall come via <a href="https://noah.up.edu.ph/weather-updates/rainfall-contour" target="_blank" rel="noreferrer">UP NOAH</a>, JAXA, and DOST-PAGASA. Forecasts from <a href="https://weather-manila.com/" target="_blank" rel="noreferrer">Weather Manila</a>. For airport reports, visit <a href="https://aviationweather.gov/data/api/" target="_blank" rel="noreferrer">NOAA Aviation Weather Center</a>.</p>
+        </section>
+        <section class="panel legend-panel">
+          <h2>Hazard legend</h2>
+          <div class="keys">
+            <span><i class="low"></i>Low</span>
+            <span><i class="medium"></i>Medium</span>
+            <span><i class="high"></i>High</span>
+          </div>
+          <p class="hint">Flood and surge use these classes. Purple marks landslide and debris-flow polygons.</p>
+        </section>
+      </div>
+      <div class="sources">Sources <a href="https://noah.up.edu.ph/" target="_blank" rel="noreferrer">Project NOAH</a>, <a href="https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps" target="_blank" rel="noreferrer">BetterGov.PH</a>, <a href="https://www.geoboundaries.org/" target="_blank" rel="noreferrer">geoBoundaries</a></div>
+    </aside>
+    <section class="map-area" aria-label="Interactive hazard map">
+      <div id="map"></div>
+      <div id="map-status" class="map-status" role="status">Loading map layers…</div>
+      <div class="map-view-controls">
+        <button id="building-view" type="button" aria-pressed="true" title="Show 3D buildings at street zoom" hidden>3D buildings</button>
+        <button id="home" type="button">Philippines view</button>
+      </div>
+      <section id="weather-player" class="weather-player" aria-label="Weather player" hidden>
+        <div class="weather-player-header">
+          <label for="weather-position">Weather time</label>
+          <output id="weather-frame" for="weather-position"></output>
+        </div>
+        <input id="weather-position" type="range" min="0" max="0" step="1" value="0">
+        <div class="weather-player-actions">
+          <button id="weather-play" type="button">Play</button>
+          <button id="weather-day-back" type="button" aria-label="Back 24 hours">−24 h</button>
+          <button id="weather-day-forward" type="button" aria-label="Forward 24 hours">+24 h</button>
+          <span id="weather-frame-count"></span>
+        </div>
+      </section>
+      <section class="inspection" aria-label="Location inspection">
+        <div class="inspection-header"><h2>Location details</h2><span id="coordinate">No pin selected</span></div>
+        <div id="inspection-result" aria-live="polite">Click anywhere on the map to inspect the visible layers.</div>
+      </section>
+    </section>
+  </main>
+  <noscript>Enable JavaScript to use this map.</noscript>
+</body>
+</html>
