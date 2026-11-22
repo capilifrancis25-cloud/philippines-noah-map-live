@@ -289,18 +289,15 @@ function bindImport() {
 }
 
 function buildingLayer(online) {
-  const base = ['max', 0, ['number', ['get', 'min_height'], 0]];
-  const mappedHeight = online ?
-    ['to-number', ['coalesce', ['get', 'height'], ['*', 3, ['to-number', ['get', 'building_levels'], 0]], 0], 0] :
-    ['number', ['get', 'height'], 7];
-  const height = ['max', ['+', base, 2], online ? ['case', ['>', mappedHeight, 0], mappedHeight, 7] : mappedHeight];
+  const base = ['max', 0, ['number', ['get', online ? 'render_min_height' : 'min_height'], 0]];
+  const height = ['max', ['+', base, 2], ['number', ['get', online ? 'render_height' : 'height'], 7]];
   return {
     id: buildingLayerId,
     type: 'fill-extrusion',
-    source: 'basemap',
-    'source-layer': 'buildings',
+    source: online ? 'streets' : 'basemap',
+    'source-layer': online ? 'building' : 'buildings',
     minzoom: buildingZoom,
-    filter: online ? ['==', ['geometry-type'], 'Polygon'] :
+    filter: online ? ['all', ['==', ['geometry-type'], 'Polygon'], ['!=', ['get', 'hide_3d'], true]] :
       ['all', ['==', ['geometry-type'], 'Polygon'],
         ['in', ['get', 'kind'], ['literal', ['building', 'building_part']]]],
     paint: {
@@ -394,7 +391,7 @@ async function initialize() {
   }
   const [module, manifest] = await Promise.all([
     import('./vendor/maplibre-gl.mjs'),
-    fetch('./manifest.json?v=0800f5d31590').then(response => response.json())
+    fetch('./manifest.json?v=4eb3a614bd76').then(response => response.json())
   ]);
   maplibregl = module;
   const remoteHazards = manifest.hazardSources;
@@ -457,12 +454,14 @@ async function initialize() {
     if (mountOnlineBasemap) {
       const identifiers = [...availableHazards];
       refreshOnlineHazards = () => syncOnlineHazards(manifest, identifiers);
-      const refreshDetail = () => {
+      const mountStreetDetail = () => {
         mountOnlineBasemap(map, onlineBuildingStyle);
-        refreshOnlineHazards();
+        if (map.getSource('streets')) map.off('zoom', mountStreetDetail);
       };
-      map.on('zoomend', refreshDetail);
-      refreshDetail();
+      map.on('zoom', mountStreetDetail);
+      map.on('zoomend', refreshOnlineHazards);
+      mountStreetDetail();
+      refreshOnlineHazards();
     }
     if (manifest.basemap) bindBuildingView();
     bindWeather(map, maplibregl, showMapOnSmallScreen, manifest.basemapUrl ? onlineWeather : undefined);
