@@ -30,6 +30,7 @@ let importedName;
 let maplibregl;
 let archiveAvailable = false;
 let mapReady = false;
+let refreshOnlineHazards;
 
 function node(tag, text, className) {
   const element = document.createElement(tag);
@@ -62,6 +63,7 @@ function makeLayerControls(available) {
         else active.delete(id);
         if (map?.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
       }
+      refreshOnlineHazards?.();
       if (pinned) inspect();
     };
     toggle.addEventListener('change', update);
@@ -324,11 +326,62 @@ function bindBuildingView() {
   toggle.addEventListener('click', () => {
     const enabled = toggle.getAttribute('aria-pressed') !== 'true';
     toggle.setAttribute('aria-pressed', String(enabled));
-    map.setLayoutProperty(buildingLayerId, 'visibility', enabled ? 'visible' : 'none');
+    if (map.getLayer(buildingLayerId)) map.setLayoutProperty(buildingLayerId, 'visibility', enabled ? 'visible' : 'none');
     updatePitch();
   });
   map.on('moveend', updatePitch);
   updatePitch();
+}
+
+const hazardAttribution = '<a href="https://noah.up.edu.ph/">Project NOAH</a> · <a href="https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps">BetterGov.PH</a> · ODbL';
+
+function hazardLayer(id, source) {
+  const layer = knownLayers[id];
+  const isSlope = layer.group === 'Landslide';
+  const classification = ['to-number', ['get', layer.group === 'Flood' ? 'Var' : 'HAZ'], 0];
+  const palette = isSlope ? ['#ceb5e7', '#b386d6', '#8b56b0', '#633888'] :
+    ['#efd04e', '#f08f36', '#d84542', '#ab2235'];
+  return {
+    id, type: 'fill', source, 'source-layer': id,
+    layout: { visibility: active.has(id) ? 'visible' : 'none' },
+    paint: {
+      'fill-color': ['match', classification, 1, palette[0], 2, palette[1], 3, palette[2], 4, palette[3], '#738695'],
+      'fill-opacity': 0.72
+    }
+  };
+}
+
+function syncOnlineHazards(manifest, identifiers) {
+  const detailed = map.getZoom() >= manifest.overview.hazardDetailZoom;
+  for (const [index, id] of identifiers.entries()) {
+    const current = map.getLayer(id);
+    if (!active.has(id)) {
+      if (current) map.setLayoutProperty(id, 'visibility', 'none');
+      continue;
+    }
+    const source = (detailed ? 'noah-' : 'noah-overview-') + id;
+    if (current?.source === source) {
+      map.setLayoutProperty(id, 'visibility', 'visible');
+      continue;
+    }
+    if (current) map.removeLayer(id);
+    if (!map.getSource(source)) {
+      map.addSource(source, detailed ?
+        { type: 'vector', url: 'pmtiles://' + manifest.hazardSources[id], attribution: hazardAttribution } :
+        overviewSource(manifest.overview, id, manifest.overview.hazardMaxZoom, localUrl, hazardAttribution));
+    }
+    const nextHazard = identifiers.slice(index + 1).find(other => map.getLayer(other));
+    const aboveHazards = map.getStyle().layers.find(layer => layer.type === 'fill-extrusion' || layer.type === 'symbol')?.id;
+    map.addLayer(hazardLayer(id, source), nextHazard || aboveHazards);
+  }
+}
+
+function onlineBuildingStyle() {
+  const layer = buildingLayer(true);
+  if (byId('building-view').getAttribute('aria-pressed') !== 'true') {
+    layer.layout = { visibility: 'none' };
+  }
+  return layer;
 }
 
 async function initialize() {
@@ -340,8 +393,8 @@ async function initialize() {
     return;
   }
   const [module, manifest] = await Promise.all([
-    import('/vendor/maplibre-gl.mjs'),
-    fetch('/manifest.json').then(response => response.json())
+    import('./vendor/maplibre-gl.mjs'),
+    fetch('./manifest.json?v=0800f5d31590').then(response => response.json())
   ]);
   maplibregl = module;
   const remoteHazards = manifest.hazardSources;
@@ -353,12 +406,14 @@ async function initialize() {
   const style = { version: 8, sources: {}, layers: [
     { id: 'water-background', type: 'background', paint: { 'background-color': '#dceaf2' } }
   ] };
+  let mountOnlineBasemap;
   if (manifest.basemapUrl) {
-    addOnlineBasemap(style, manifest.basemapUrl, localUrl);
+    registerOverviewProtocol(maplibregl);
+    mountOnlineBasemap = addOnlineBasemap(style, manifest.basemapUrl, manifest.overview, localUrl);
   } else if (manifest.basemap) {
-    style.glyphs = localUrl('/map-assets/fonts/{fontstack}/{range}.pbf').replace(/%7B/g, '{').replace(/%7D/g, '}');
+    style.glyphs = localUrl('./map-assets/fonts/{fontstack}/{range}.pbf').replace(/%7B/g, '{').replace(/%7D/g, '}');
     const basemapArchive = manifest.basemapArchive || 'philippines.pmtiles';
-    style.sources.basemap = { type: 'vector', url: 'pmtiles://' + localUrl('/map-assets/tiles/' + basemapArchive),
+    style.sources.basemap = { type: 'vector', url: 'pmtiles://' + localUrl('./map-assets/tiles/' + basemapArchive),
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Protomaps' };
     const baseStyle = { ...basemaps.namedFlavor('light'), water: '#bddce8' };
     const baseLayers = basemaps.layers('basemap', baseStyle, { lang: 'en' });
@@ -372,38 +427,21 @@ async function initialize() {
       else style.layers.push(layer);
     }
   } else if (manifest.boundaries) {
-    style.sources.boundary = { type: 'geojson', data: '/map-assets/ADM2.geojson' };
+    style.sources.boundary = { type: 'geojson', data: './map-assets/ADM2.geojson' };
     style.layers.push({ id: 'land-outline', type: 'fill', source: 'boundary',
       paint: { 'fill-color': '#eef3e8', 'fill-outline-color': '#8aa89f' } });
   }
-  if (archiveAvailable) {
-    const attribution = '<a href="https://noah.up.edu.ph/">Project NOAH</a> · <a href="https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps">BetterGov.PH</a> · ODbL';
-    if (!remoteHazards) {
-      style.sources.noah = {
-        type: 'vector', url: 'pmtiles://' + localUrl('/map-assets/tiles/' + manifest.hazard), attribution
-      };
-    }
-    const hazards = [...availableHazards].map(id => {
-      const layer = knownLayers[id];
-      const source = remoteHazards ? 'noah-' + id : 'noah';
-      if (remoteHazards) style.sources[source] = { type: 'vector', url: 'pmtiles://' + remoteHazards[id], attribution };
-      const isSlope = layer.group === 'Landslide';
-      const classification = ['to-number', ['get', layer.group === 'Flood' ? 'Var' : 'HAZ'], 0];
-      const palette = isSlope ? ['#ceb5e7', '#b386d6', '#8b56b0', '#633888'] :
-        ['#efd04e', '#f08f36', '#d84542', '#ab2235'];
-      return {
-        id, type: 'fill', source, 'source-layer': id,
-        layout: { visibility: active.has(id) ? 'visible' : 'none' },
-        paint: { 'fill-color': ['match', classification, 1, palette[0], 2, palette[1], 3, palette[2], 4, palette[3], '#738695'],
-          'fill-opacity': 0.72 }
-      };
-    });
+  if (archiveAvailable && !remoteHazards) {
+    style.sources.noah = {
+      type: 'vector', url: 'pmtiles://' + localUrl('./map-assets/tiles/' + manifest.hazard), attribution: hazardAttribution
+    };
     const firstLabel = style.layers.findIndex(layer => layer.type === 'symbol');
+    const hazards = [...availableHazards].map(id => hazardLayer(id, 'noah'));
     style.layers.splice(firstLabel === -1 ? style.layers.length : firstLabel, 0, ...hazards);
   }
-  if (manifest.basemap) {
+  if (manifest.basemap && !mountOnlineBasemap) {
     const firstLabel = style.layers.findIndex(layer => layer.type === 'symbol');
-    style.layers.splice(firstLabel === -1 ? style.layers.length : firstLabel, 0, buildingLayer(Boolean(manifest.basemapUrl)));
+    style.layers.splice(firstLabel === -1 ? style.layers.length : firstLabel, 0, buildingLayer(false));
   }
   const showHome = () => map.fitBounds(philippines, { padding: 24, duration: 450, pitch: 0 });
   map = new maplibregl.Map({ container: 'map', style, bounds: philippines, fitBoundsOptions: { padding: 24 },
@@ -416,6 +454,16 @@ async function initialize() {
   map.on('idle', inspect);
   map.on('load', () => {
     mapReady = true;
+    if (mountOnlineBasemap) {
+      const identifiers = [...availableHazards];
+      refreshOnlineHazards = () => syncOnlineHazards(manifest, identifiers);
+      const refreshDetail = () => {
+        mountOnlineBasemap(map, onlineBuildingStyle);
+        refreshOnlineHazards();
+      };
+      map.on('zoomend', refreshDetail);
+      refreshDetail();
+    }
     if (manifest.basemap) bindBuildingView();
     bindWeather(map, maplibregl, showMapOnSmallScreen, manifest.basemapUrl ? onlineWeather : undefined);
     if (manifest.basemap && (manifest.hazard === 'noah.pmtiles' || remoteHazards)) status.hidden = true;
@@ -429,7 +477,7 @@ async function initialize() {
       'A local map asset could not be read. Check the dashboard files and reload.';
   });
   if (manifest.places) {
-    const index = await fetch('/map-assets/places.json').then(response => response.json());
+    const index = await fetch('./map-assets/places.json').then(response => response.json());
     places = index.map(place => ({ ...place, search: normalize(place.name + ' ' + (place.parent || '')) }));
   }
 }

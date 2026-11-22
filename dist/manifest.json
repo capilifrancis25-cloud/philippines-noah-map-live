@@ -1,8 +1,18 @@
 {
   "basemap": true,
   "basemapUrl": "https://huggingface.co/datasets/bettergovph/ph-osm-pmtiles/resolve/main/ph_osm.pmtiles",
-  "boundaries": true,
   "places": true,
+  "overview": {
+    "bounds": [
+      115.8,
+      4.3,
+      127.2,
+      21.4
+    ],
+    "basemapMaxZoom": 8,
+    "hazardMaxZoom": 5,
+    "hazardDetailZoom": 8
+  },
   "hazardSources": {
     "flood_25yr": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/flood_25yr.pmtiles",
     "flood_5yr": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/flood_5yr.pmtiles",
