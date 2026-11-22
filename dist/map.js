@@ -309,6 +309,21 @@ function buildingLayer(online) {
   };
 }
 
+function bindSidebar() {
+  const workspace = byId('workspace');
+  const panel = byId('map-controls');
+  const hide = byId('hide-sidebar');
+  const show = byId('show-sidebar');
+  const setCollapsed = collapsed => {
+    workspace.classList.toggle('sidebar-collapsed', collapsed);
+    panel.hidden = collapsed;
+    show.hidden = !collapsed;
+    (collapsed ? show : hide).focus({ preventScroll: true });
+  };
+  hide.addEventListener('click', () => setCollapsed(true));
+  show.addEventListener('click', () => setCollapsed(false));
+}
+
 function bindBuildingView() {
   const toggle = byId('building-view');
   toggle.hidden = false;
@@ -382,6 +397,7 @@ function onlineBuildingStyle() {
 }
 
 async function initialize() {
+  bindSidebar();
   bindSearch();
   bindImport();
   const status = byId('map-status');
