@@ -1,6 +1,6 @@
 {
   "basemap": true,
-  "basemapUrl": "https://huggingface.co/datasets/bettergovph/ph-osm-pmtiles/resolve/main/ph_osm.pmtiles",
+  "basemapUrl": "https://tiles.openfreemap.org/planet",
   "places": true,
   "overview": {
     "bounds": [

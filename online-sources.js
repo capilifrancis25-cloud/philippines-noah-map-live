@@ -24,19 +24,18 @@ function overviewSource(overview, name, maxzoom, localUrl, attribution) {
 
 function addOnlineBasemap(style, url, overview, localUrl) {
   const attribution = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Protomaps';
-  const osm = { type: 'vector', url: 'pmtiles://' + url,
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · HOT · BetterGov.PH' };
   const detailZoom = overview.basemapMaxZoom + 1;
   const font = ['Noto Sans Regular'];
   const name = ['coalesce', ['get', 'name_en'], ['get', 'name:en'], ['get', 'name'], ''];
-  const roadClass = ['get', 'highway'];
-  const majorRoad = ['in', roadClass, ['literal', ['motorway', 'trunk', 'primary', 'secondary']]];
+  const roadClass = ['get', 'class'];
+  const majorRoad = ['in', roadClass, ['literal', ['motorway', 'trunk', 'primary', 'secondary', 'tertiary']]];
+  const localRoad = ['in', roadClass, ['literal', ['minor', 'service', 'track', 'path']]];
   const polygon = ['==', ['geometry-type'], 'Polygon'];
   const line = ['==', ['geometry-type'], 'LineString'];
   const placeLayout = {
     'text-field': name, 'text-font': font, 'text-padding': 8,
     'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 13, 14],
-    'symbol-sort-key': ['match', ['get', 'place'], 'city', 0, 'town', 1, 2]
+    'symbol-sort-key': ['coalesce', ['get', 'rank'], 99]
   };
   const placePaint = { 'text-color': '#263b48', 'text-halo-color': '#fff', 'text-halo-width': 1.2 };
 
@@ -50,50 +49,43 @@ function addOnlineBasemap(style, url, overview, localUrl) {
     { id: 'overview-boundaries', type: 'line', source: 'overview-basemap', 'source-layer': 'boundaries',
       maxzoom: detailZoom, paint: { 'line-color': '#aab6aa', 'line-width': 0.8 } },
     { id: 'overview-roads', type: 'line', source: 'overview-basemap', 'source-layer': 'roads', minzoom: 7,
-      maxzoom: detailZoom, filter: ['in', ['get', 'kind'], ['literal', ['highway', 'major_road']]],
-      paint: { 'line-color': '#d7bfa1', 'line-width': 1 } },
+      filter: ['in', ['get', 'kind'], ['literal', ['highway', 'major_road']]],
+      paint: { 'line-color': '#d7bfa1', 'line-width': 1,
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 8, 1, 12, 0.4] } },
     { id: 'overview-places', type: 'symbol', source: 'overview-basemap', 'source-layer': 'places',
-      maxzoom: detailZoom, filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', name, '']],
+      maxzoom: detailZoom + 2, filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', name, '']],
       layout: { ...placeLayout, 'symbol-sort-key': ['match', ['get', 'kind'], 'country', 0, 'locality', 1, 2] },
       paint: placePaint }
   );
 
   const streetLayers = [
-    { id: 'water-areas', type: 'fill', source: 'streets', 'source-layer': 'waterways', minzoom: detailZoom,
+    { id: 'water-areas', type: 'fill', source: 'streets', 'source-layer': 'water', minzoom: detailZoom,
       filter: polygon, paint: { 'fill-color': '#b9d9e8' } },
-    { id: 'water-lines', type: 'line', source: 'streets', 'source-layer': 'waterways', minzoom: detailZoom,
+    { id: 'water-lines', type: 'line', source: 'streets', 'source-layer': 'waterway', minzoom: detailZoom,
       filter: line, paint: { 'line-color': '#9ac5de', 'line-width': 1.2 } },
-    { id: 'road-lines', type: 'line', source: 'streets', 'source-layer': 'roads', minzoom: detailZoom,
-      filter: ['all', line, ['step', ['zoom'], majorRoad, 11, true]],
+    { id: 'road-lines', type: 'line', source: 'streets', 'source-layer': 'transportation', minzoom: detailZoom,
+      filter: ['all', line, ['any', majorRoad, ['all', ['>=', ['zoom'], 11], localRoad]]],
       paint: { 'line-color': ['case', majorRoad, '#d7bfa1', '#fff'],
         'line-width': ['interpolate', ['linear'], ['zoom'], 7, 0.5, 13, 1.8, 18, 6] } },
-    { id: 'place-labels', type: 'symbol', source: 'places', 'source-layer': 'populated_places', minzoom: detailZoom,
+    { id: 'place-labels', type: 'symbol', source: 'streets', 'source-layer': 'place', minzoom: detailZoom,
       filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', name, '']], layout: placeLayout, paint: placePaint },
-    { id: 'road-labels', type: 'symbol', source: 'streets', 'source-layer': 'roads', minzoom: 13,
+    { id: 'road-labels', type: 'symbol', source: 'streets', 'source-layer': 'transportation_name', minzoom: 13,
       filter: ['all', line, ['!=', name, '']],
       layout: { 'text-field': name, 'text-font': font, 'symbol-placement': 'line', 'text-size': 11 },
-      paint: { 'text-color': '#43515a', 'text-halo-color': '#fff', 'text-halo-width': 1.1 } }
+      paint: { 'text-color': '#43515a', 'text-halo-color': '#fff', 'text-halo-width': 1.1 } },
+    { id: 'building-footprints', type: 'fill', source: 'streets', 'source-layer': 'building', minzoom: 14,
+      filter: polygon, paint: { 'fill-color': '#d4d3cb', 'fill-opacity': 0.6 } }
   ];
   const firstOverlay = map => map.getStyle().layers.find(layer => layer.source?.startsWith('noah') ||
     layer.id === 'weather-overlay' || layer.id === 'local-import' || layer.type === 'symbol' ||
     layer.type === 'fill-extrusion')?.id;
 
   return (map, buildings) => {
-    const zoom = map.getZoom();
-    if (zoom >= detailZoom && !map.getSource('streets')) {
-      map.addSource('streets', { ...osm, maxzoom: 13 });
-      map.addSource('places', { ...osm, maxzoom: 12 });
-      const underOverlays = firstOverlay(map);
-      for (const layer of streetLayers) map.addLayer(layer, layer.type === 'symbol' ? undefined : underOverlays);
-    }
-    if (zoom >= 14 && !map.getSource('basemap')) {
-      map.addSource('basemap', osm);
-      map.addLayer({
-        id: 'building-footprints', type: 'fill', source: 'basemap', 'source-layer': 'buildings', minzoom: 14,
-        filter: polygon, paint: { 'fill-color': '#d4d3cb', 'fill-opacity': 0.6 }
-      }, firstOverlay(map));
-      map.addLayer(buildings(), map.getStyle().layers.find(layer => layer.type === 'symbol')?.id);
-    }
+    if (map.getZoom() < detailZoom - 0.5 || map.getSource('streets')) return;
+    map.addSource('streets', { type: 'vector', url, minzoom: detailZoom });
+    const underOverlays = firstOverlay(map);
+    for (const layer of streetLayers) map.addLayer(layer, layer.type === 'symbol' ? undefined : underOverlays);
+    map.addLayer(buildings(), map.getStyle().layers.find(layer => layer.type === 'symbol')?.id);
   };
 }
 
