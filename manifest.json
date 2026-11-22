@@ -1,0 +1,16 @@
+{
+  "basemap": true,
+  "basemapUrl": "https://huggingface.co/datasets/bettergovph/ph-osm-pmtiles/resolve/main/ph_osm.pmtiles",
+  "boundaries": true,
+  "places": true,
+  "hazardSources": {
+    "flood_25yr": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/flood_25yr.pmtiles",
+    "flood_5yr": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/flood_5yr.pmtiles",
+    "landslide": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/landslide.pmtiles",
+    "debris_flow": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/debris_flow.pmtiles",
+    "storm_surge_ssa1": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/storm_surge_ssa1.pmtiles",
+    "storm_surge_ssa2": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/storm_surge_ssa2.pmtiles",
+    "storm_surge_ssa3": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/storm_surge_ssa3.pmtiles",
+    "storm_surge_ssa4": "https://huggingface.co/datasets/bettergovph/project-noah-hazard-maps/resolve/main/PMTiles/layers/storm_surge_ssa4.pmtiles"
+  }
+}
