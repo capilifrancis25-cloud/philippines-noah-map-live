@@ -7,12 +7,12 @@
   <meta name="description" content="Explore flood, landslide, and storm surge maps for the Philippines.">
   <title>Philippines Hazard Map</title>
   <link rel="stylesheet" href="./vendor/maplibre-gl.css">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=dc6b776c1859">
   <script defer src="./vendor/pmtiles.js"></script>
   <script defer src="./online-sources.js?v=3e8de31c025a"></script>
   <script defer src="./vendor/shp.js"></script>
   <script defer src="./weather.js"></script>
-  <script defer src="./map.js?v=c0b63376e52f"></script>
+  <script defer src="./map.js?v=161de35381df"></script>
 </head>
 <body>
   <header class="masthead">
@@ -23,11 +23,14 @@
     </div>
     <span class="offline"><span></span> Online dashboard</span>
   </header>
-  <main class="workspace">
-    <aside class="sidebar" aria-label="Map controls">
+  <main id="workspace" class="workspace">
+    <aside id="map-controls" class="sidebar" aria-label="Map controls">
       <div class="sidebar-scroll">
         <section class="panel search-panel">
-          <h2>Find a location</h2>
+          <div class="search-heading">
+            <h2>Find a location</h2>
+            <button id="hide-sidebar" class="sidebar-hide" type="button" aria-controls="map-controls" aria-expanded="true">Hide panel</button>
+          </div>
           <form id="search-form">
             <label class="visually-hidden" for="search">Province, municipality or coordinates</label>
             <div class="search-box">
@@ -95,6 +98,10 @@
     <section class="map-area" aria-label="Interactive hazard map">
       <div id="map"></div>
       <div id="map-status" class="map-status" role="status">Loading map layers…</div>
+      <button id="show-sidebar" class="sidebar-show" type="button" aria-label="Show panel" aria-controls="map-controls" aria-expanded="false" hidden>
+        <span class="sidebar-icon" aria-hidden="true"></span>
+        <span class="sidebar-show-label">Show panel</span>
+      </button>
       <div class="map-view-controls">
         <button id="building-view" type="button" aria-pressed="true" title="Show 3D buildings at street zoom" hidden>3D buildings</button>
         <button id="home" type="button">Philippines view</button>
