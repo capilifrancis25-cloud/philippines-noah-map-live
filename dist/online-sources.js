@@ -1,17 +1,33 @@
 'use strict';
 
+async function fetchOverviewTile(url, controller) {
+  if (url.origin !== location.origin) throw new Error('Invalid overview tile origin');
+  const response = await fetch(url, { signal: controller.signal });
+  if (!response.ok) throw new Error('Overview tile request failed (' + response.status + ')');
+  const raw = await response.arrayBuffer();
+  const bytes = new Uint8Array(raw);
+  const compressed = bytes[0] === 0x1f && bytes[1] === 0x8b;
+  const data = compressed ?
+    await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : raw;
+  return { data, cacheControl: response.headers.get('cache-control'), expires: response.headers.get('expires') };
+}
+
 function registerOverviewProtocol(maplibregl) {
-  maplibregl.addProtocol('noah-overview', async (request, controller) => {
-    const url = new URL(request.url.slice('noah-overview://'.length));
-    if (url.origin !== location.origin) throw new Error('Invalid overview tile origin');
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) throw new Error('Overview tile request failed (' + response.status + ')');
-    const raw = await response.arrayBuffer();
-    const bytes = new Uint8Array(raw);
-    const compressed = bytes[0] === 0x1f && bytes[1] === 0x8b;
-    const data = compressed ?
-      await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : raw;
-    return { data, cacheControl: response.headers.get('cache-control'), expires: response.headers.get('expires') };
+  maplibregl.addProtocol('noah-overview', (request, controller) =>
+    fetchOverviewTile(new URL(request.url.slice('noah-overview://'.length)), controller));
+}
+
+function registerHazardProtocol(maplibregl, protocol, manifest, localUrl) {
+  // Keeping both resolutions in one source lets MapLibre reuse ready tiles while fetching new ones.
+  maplibregl.addProtocol('noah-hazard', async (request, controller) => {
+    const match = /^noah-hazard:\/\/([a-z0-9_]+)\/(\d+\/\d+\/\d+)$/.exec(request.url);
+    if (!match || !Object.hasOwn(manifest.hazardSources, match[1])) throw new Error('Invalid hazard tile request');
+    const [, layer, tile] = match;
+    const zoom = Number(tile.split('/')[0]);
+    if (zoom <= manifest.overview.hazardMaxZoom) {
+      return fetchOverviewTile(new URL(localUrl('./overview/' + layer + '/' + tile + '.pbf.gz')), controller);
+    }
+    return protocol.tile({ ...request, url: 'pmtiles://' + manifest.hazardSources[layer] + '/' + tile }, controller);
   });
 }
 

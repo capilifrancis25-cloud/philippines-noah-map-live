@@ -91,7 +91,7 @@ function getAttribute(properties, field) {
 function inspect() {
   if (!pinned || !mapReady) return;
   const output = byId('inspection-result');
-  if (!map.areTilesLoaded()) {
+  if (map.isMoving() || !map.areTilesLoaded()) {
     output.textContent = 'Reading the selected map layers…';
     return;
   }
@@ -364,24 +364,14 @@ function hazardLayer(id, source) {
 }
 
 function syncOnlineHazards(manifest, identifiers) {
-  const detailed = map.getZoom() >= manifest.overview.hazardDetailZoom;
   for (const [index, id] of identifiers.entries()) {
-    const current = map.getLayer(id);
-    if (!active.has(id)) {
-      if (current) map.setLayoutProperty(id, 'visibility', 'none');
-      continue;
-    }
-    const source = (detailed ? 'noah-' : 'noah-overview-') + id;
-    if (current?.source === source) {
-      map.setLayoutProperty(id, 'visibility', 'visible');
-      continue;
-    }
-    if (current) map.removeLayer(id);
-    if (!map.getSource(source)) {
-      map.addSource(source, detailed ?
-        { type: 'vector', url: 'pmtiles://' + manifest.hazardSources[id], attribution: hazardAttribution } :
-        overviewSource(manifest.overview, id, manifest.overview.hazardMaxZoom, localUrl, hazardAttribution));
-    }
+    if (!active.has(id) || map.getLayer(id)) continue;
+    const source = 'noah-' + id;
+    map.addSource(source, {
+      type: 'vector', tiles: ['noah-hazard://' + id + '/{z}/{x}/{y}'],
+      minzoom: 4, maxzoom: manifest.hazardTileMaxZoom, bounds: manifest.overview.bounds,
+      attribution: hazardAttribution
+    });
     const nextHazard = identifiers.slice(index + 1).find(other => map.getLayer(other));
     const aboveHazards = map.getStyle().layers.find(layer => layer.type === 'fill-extrusion' || layer.type === 'symbol')?.id;
     map.addLayer(hazardLayer(id, source), nextHazard || aboveHazards);
@@ -407,7 +397,7 @@ async function initialize() {
   }
   const [module, manifest] = await Promise.all([
     import('./vendor/maplibre-gl.mjs'),
-    fetch('./manifest.json?v=4eb3a614bd76').then(response => response.json())
+    fetch('./manifest.json?v=5a1359b3ba1c').then(response => response.json())
   ]);
   maplibregl = module;
   const remoteHazards = manifest.hazardSources;
@@ -422,6 +412,7 @@ async function initialize() {
   let mountOnlineBasemap;
   if (manifest.basemapUrl) {
     registerOverviewProtocol(maplibregl);
+    registerHazardProtocol(maplibregl, protocol, manifest, localUrl);
     mountOnlineBasemap = addOnlineBasemap(style, manifest.basemapUrl, manifest.overview, localUrl);
   } else if (manifest.basemap) {
     style.glyphs = localUrl('./map-assets/fonts/{fontstack}/{range}.pbf').replace(/%7B/g, '{').replace(/%7D/g, '}');
@@ -464,6 +455,7 @@ async function initialize() {
   marker = new maplibregl.Marker({ color: '#096853' });
   byId('home').addEventListener('click', showHome);
   map.on('click', event => setPin(event.lngLat.toArray()));
+  map.on('movestart', inspect);
   map.on('idle', inspect);
   map.on('load', () => {
     mapReady = true;
@@ -475,7 +467,6 @@ async function initialize() {
         if (map.getSource('streets')) map.off('zoom', mountStreetDetail);
       };
       map.on('zoom', mountStreetDetail);
-      map.on('zoomend', refreshOnlineHazards);
       mountStreetDetail();
       refreshOnlineHazards();
     }
